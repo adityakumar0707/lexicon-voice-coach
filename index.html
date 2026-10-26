@@ -1,0 +1,584 @@
+<title>Lexicon Voice Coach</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+  /* Layout concept: one dictionary-entry card, centered, that steps through
+     Learn -> Quiz -> Verdict for a single word at a time; a thin score strip
+     and level filter sit above it, a waveform glyph marks whatever is being
+     spoken aloud. */
+  :root{
+    --bg:#EEF1F7; --surface:#FFFFFF; --surface-2:#F7F8FC;
+    --ink:#1B2130; --ink-soft:#636E82; --ink-faint:#9199AC;
+    --accent:#3454D1; --accent-soft:#E3E8FC; --accent-ink:#2742B0;
+    --good:#1E9E5A; --good-soft:#E3F7EC;
+    --bad:#D64545; --bad-soft:#FCE7E7;
+    --border:#DEE3EE;
+    --font-display:'Fraunces',Georgia,'Times New Roman',serif;
+    --font-body:'Work Sans',-apple-system,Segoe UI,Roboto,sans-serif;
+    --font-mono:'IBM Plex Mono',Menlo,Consolas,monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0F1320; --surface:#171B2A; --surface-2:#1C2132;
+      --ink:#ECEFF7; --ink-soft:#9AA3BC; --ink-faint:#6B7490;
+      --accent:#7C93FF; --accent-soft:#232A47; --accent-ink:#AFBFFF;
+      --good:#3ED98A; --good-soft:#163024;
+      --bad:#FF6B6B; --bad-soft:#36191C;
+      --border:#2A3047;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0F1320; --surface:#171B2A; --surface-2:#1C2132;
+    --ink:#ECEFF7; --ink-soft:#9AA3BC; --ink-faint:#6B7490;
+    --accent:#7C93FF; --accent-soft:#232A47; --accent-ink:#AFBFFF;
+    --good:#3ED98A; --good-soft:#163024;
+    --bad:#FF6B6B; --bad-soft:#36191C;
+    --border:#2A3047;
+    color-scheme: dark;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--font-body);
+    padding-left:max(16px, env(safe-area-inset-left,0px));
+    padding-right:max(16px, env(safe-area-inset-right,0px));
+  }
+  .wrap{
+    max-width:600px; margin:0 auto; padding-block:28px 48px;
+    display:flex; flex-direction:column; gap:16px;
+  }
+
+  header.top{display:flex; flex-direction:column; gap:12px;}
+  .brand{display:flex; align-items:baseline; justify-content:space-between; gap:10px; min-width:0;}
+  .brand h1{
+    font-family:var(--font-display); font-weight:600; font-size:1.5rem;
+    margin:0; letter-spacing:-0.01em;
+  }
+  .brand .tag{font-size:.8rem; color:var(--ink-soft); margin-top:2px;}
+  .scorechip{
+    font-family:var(--font-mono); font-size:.78rem; color:var(--accent-ink);
+    background:var(--accent-soft); border-radius:999px; padding:6px 12px;
+    white-space:nowrap; font-variant-numeric:tabular-nums; flex-shrink:0;
+  }
+
+  .levels{display:flex; gap:8px; flex-wrap:wrap;}
+  .chip{
+    font-family:var(--font-body); font-size:.78rem; font-weight:600;
+    border:1px solid var(--border); background:var(--surface); color:var(--ink-soft);
+    padding:6px 13px; border-radius:999px; cursor:pointer; transition:background .15s,color .15s,border-color .15s;
+  }
+  .chip:hover{border-color:var(--accent);}
+  .chip.active{background:var(--accent); border-color:var(--accent); color:#fff;}
+
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:20px;
+    padding:28px; display:flex; flex-direction:column; gap:20px;
+    box-shadow:0 1px 2px rgba(0,0,0,.03);
+  }
+
+  .entry-head{display:flex; flex-direction:column; gap:10px;}
+  .entry-top{display:flex; align-items:center; gap:12px; flex-wrap:wrap; min-width:0;}
+  .word{
+    font-family:var(--font-display); font-weight:600; font-size:2.1rem;
+    letter-spacing:-0.01em; margin:0; word-break:break-word;
+  }
+  .pos{
+    font-family:var(--font-mono); font-size:.72rem; color:var(--accent-ink);
+    background:var(--accent-soft); border-radius:6px; padding:3px 8px;
+    text-transform:lowercase; letter-spacing:.02em; flex-shrink:0;
+  }
+  .ipa{font-family:var(--font-mono); font-size:.92rem; color:var(--ink-soft);}
+  .level-tag{font-size:.68rem; color:var(--ink-faint); letter-spacing:.04em; text-transform:uppercase;}
+
+  .speakrow{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+  .speakbtn{
+    display:inline-flex; align-items:center; gap:8px; font-family:var(--font-body);
+    font-weight:600; font-size:.85rem; color:var(--accent-ink); background:var(--accent-soft);
+    border:none; border-radius:999px; padding:9px 16px 9px 12px; cursor:pointer;
+  }
+  .speakbtn:hover{filter:brightness(0.97);}
+  .speakbtn:disabled{opacity:.55; cursor:default;}
+  .speakbtn svg{width:16px; height:16px; flex-shrink:0;}
+
+  .wave{display:flex; align-items:center; gap:2px; height:14px;}
+  .wave span{
+    display:block; width:3px; border-radius:2px; background:var(--accent-ink);
+    height:4px; opacity:.4; transition:opacity .2s;
+  }
+  .wave.live span{opacity:1; animation:bounce 0.9s ease-in-out infinite;}
+  .wave.live span:nth-child(2){animation-delay:.12s;}
+  .wave.live span:nth-child(3){animation-delay:.24s;}
+  .wave.live span:nth-child(4){animation-delay:.36s;}
+  .wave.live span:nth-child(5){animation-delay:.48s;}
+  @keyframes bounce{0%,100%{height:4px;}50%{height:14px;}}
+  @media (prefers-reduced-motion:reduce){.wave.live span{animation:none; height:10px; opacity:1;}}
+
+  .prompt{font-size:.95rem; color:var(--ink-soft); line-height:1.5;}
+  .prompt b{color:var(--ink); font-weight:600;}
+
+  textarea.answer{
+    width:100%; min-width:0; font-family:var(--font-body); font-size:.95rem;
+    padding:12px 14px; border:1px solid var(--border); border-radius:12px;
+    background:var(--surface-2); color:var(--ink); resize:vertical; min-height:72px;
+  }
+  textarea.answer:focus{outline:2px solid var(--accent); outline-offset:1px;}
+
+  .actions{display:flex; gap:10px; flex-wrap:wrap;}
+  .btn{
+    font-family:var(--font-body); font-weight:600; font-size:.88rem; border-radius:11px;
+    padding:11px 18px; cursor:pointer; border:1px solid transparent;
+  }
+  .btn.primary{background:var(--accent); color:#fff;}
+  .btn.primary:disabled{opacity:.5; cursor:default;}
+  .btn.ghost{background:transparent; color:var(--ink-soft); border-color:var(--border);}
+  .btn.ghost:hover{border-color:var(--accent); color:var(--accent-ink);}
+  .btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+
+  .verdict{
+    display:flex; gap:12px; align-items:flex-start; border-radius:14px; padding:14px 16px;
+    font-size:.92rem; line-height:1.5;
+  }
+  .verdict.good{background:var(--good-soft); color:var(--good);}
+  .verdict.bad{background:var(--bad-soft); color:var(--bad);}
+  .verdict.neutral{background:var(--surface-2); color:var(--ink-soft);}
+  .verdict .mark{font-size:1.1rem; line-height:1.3; flex-shrink:0;}
+  .verdict .feedback{color:var(--ink);}
+  .verdict .source{display:block; font-size:.68rem; margin-top:4px; opacity:.7; letter-spacing:.02em;}
+
+  .definition{
+    background:var(--surface-2); border-radius:14px; padding:16px 18px;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .definition .def{font-size:.95rem; line-height:1.55;}
+  .definition .ex{font-size:.9rem; color:var(--ink-soft); font-style:italic; line-height:1.5;}
+  .definition .ex b{font-style:normal; color:var(--ink);}
+
+  .scorestrip{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    font-family:var(--font-mono); font-size:.75rem; color:var(--ink-faint);
+    border-top:1px solid var(--border); padding-top:14px; flex-wrap:wrap;
+    font-variant-numeric:tabular-nums;
+  }
+  .scorestrip .streak{color:var(--accent-ink);}
+
+  .surprise{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    flex-wrap:wrap; border:1px dashed var(--border); border-radius:14px; padding:12px 16px;
+  }
+  .surprise p{margin:0; font-size:.82rem; color:var(--ink-soft); min-width:0;}
+
+  footer.note{font-size:.76rem; color:var(--ink-faint); line-height:1.5; text-align:center; padding:4px 8px;}
+
+  @media (max-width:420px){
+    .card{padding:20px;}
+    .word{font-size:1.7rem;}
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div>
+        <h1>Lexicon Voice Coach</h1>
+        <div class="tag">Hear a word, say back what it means.</div>
+      </div>
+      <div class="scorechip" id="scorechip">0 / 0</div>
+    </div>
+    <div class="levels" id="levels"></div>
+  </header>
+
+  <section class="card">
+    <div class="entry-head">
+      <div class="entry-top">
+        <h2 class="word" id="word">—</h2>
+        <span class="pos" id="pos">&nbsp;</span>
+      </div>
+      <div class="speakrow">
+        <span class="ipa" id="ipa">&nbsp;</span>
+        <span class="level-tag" id="levelTag"></span>
+      </div>
+      <div class="speakrow">
+        <button class="speakbtn" id="hearWordBtn" title="Hear the word">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18.5 5.5a9 9 0 0 1 0 13"></path></svg>
+          Hear it
+        </button>
+        <div class="wave" id="wave"><span></span><span></span><span></span><span></span><span></span></div>
+      </div>
+    </div>
+
+    <div id="quizStage">
+      <p class="prompt">In your own words, what does <b id="promptWord">this word</b> mean?</p>
+      <textarea class="answer" id="answerBox" placeholder="Type your answer here… (a sentence or two is plenty)"></textarea>
+      <div class="actions">
+        <button class="btn primary" id="checkBtn">Check my answer</button>
+        <button class="btn ghost" id="revealBtn">I don't know — show me</button>
+      </div>
+    </div>
+
+    <div id="verdictStage" hidden>
+      <div class="verdict" id="verdictBox"></div>
+      <div class="definition" id="definitionBox" style="margin-top:14px;"></div>
+      <div class="actions" style="margin-top:14px;">
+        <button class="btn ghost" id="hearDefBtn">Hear definition + example</button>
+        <button class="btn primary" id="nextBtn">Next word →</button>
+      </div>
+    </div>
+
+    <div class="scorestrip">
+      <span>Correct <span id="correctCount">0</span> of <span id="totalCount">0</span></span>
+      <span class="streak">Streak <span id="streakCount">0</span> · Best <span id="bestCount">0</span></span>
+    </div>
+  </section>
+
+  <div class="surprise" id="surpriseRow" hidden>
+    <p>Want a word outside the usual set? Claude can invent one on the spot.</p>
+    <button class="btn ghost" id="surpriseBtn">Surprise me ✨</button>
+  </div>
+
+  <footer class="note" id="footnote">
+    Every word, definition and bit of feedback here is spoken aloud. Voice <em>input</em> isn't available in this preview, so answer by typing — think of it as the transcript of what you'd say.
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var WORDS = [
+    {word:"candid", ipa:"KAN-did", pos:"adjective", level:"easy", definition:"Truthful and straightforward, without trying to hide anything or spare feelings.", example:"Her candid feedback on the draft stung a little, but it made the final version much stronger."},
+    {word:"diligent", ipa:"DIL-ih-junt", pos:"adjective", level:"easy", definition:"Showing careful, steady effort and attention to a task over time.", example:"He was diligent about reviewing his notes every evening, even when he was tired."},
+    {word:"frugal", ipa:"FROO-gul", pos:"adjective", level:"easy", definition:"Careful about spending money or using resources; avoiding waste.", example:"Growing up, their frugal habits meant leftovers never went to waste."},
+    {word:"genuine", ipa:"JEN-yoo-in", pos:"adjective", level:"easy", definition:"Real and sincere, not fake or pretended.", example:"The apology felt genuine, not just something said to end the argument."},
+    {word:"optimistic", ipa:"op-tih-MIS-tik", pos:"adjective", level:"easy", definition:"Hopeful and confident that things will turn out well.", example:"Even after the setback, she stayed optimistic about the project's chances."},
+    {word:"resilient", ipa:"ree-ZIL-yunt", pos:"adjective", level:"easy", definition:"Able to recover quickly from difficulty or setbacks.", example:"The small town proved resilient, rebuilding its market within weeks of the flood."},
+    {word:"versatile", ipa:"VUR-suh-tul", pos:"adjective", level:"easy", definition:"Able to adapt to many different functions, uses, or situations.", example:"A good chef's knife is versatile enough to handle almost any kitchen task."},
+    {word:"vivid", ipa:"VIV-id", pos:"adjective", level:"easy", definition:"Producing powerful, clear images or impressions in the mind; intensely bright or distinct.", example:"Her vivid description of the storm made us feel like we were standing on the dock."},
+    {word:"ambiguous", ipa:"am-BIG-yoo-us", pos:"adjective", level:"medium", definition:"Open to more than one interpretation; not clearly defined.", example:"The instructions were so ambiguous that half the team built the feature differently."},
+    {word:"eloquent", ipa:"EL-oh-kwunt", pos:"adjective", level:"medium", definition:"Fluent and persuasive in speaking or writing.", example:"Her eloquent closing argument left no doubt in the jury's mind."},
+    {word:"meticulous", ipa:"meh-TIK-yoo-lus", pos:"adjective", level:"medium", definition:"Showing great care and attention to small details.", example:"The restorer was meticulous, matching each brushstroke to the original painter's technique."},
+    {word:"pragmatic", ipa:"prag-MAT-ik", pos:"adjective", level:"medium", definition:"Dealing with problems in a sensible, practical way rather than by fixed theory or idealism.", example:"Rather than debate the perfect solution, the team took a pragmatic approach and shipped something that worked."},
+    {word:"resourceful", ipa:"ree-SORS-ful", pos:"adjective", level:"medium", definition:"Able to find quick, clever ways to overcome difficulties.", example:"With no signal and a dead battery, she was resourceful enough to navigate using the stars."},
+    {word:"tenacious", ipa:"teh-NAY-shus", pos:"adjective", level:"medium", definition:"Holding firmly to a course of action or belief; not easily giving up.", example:"The tenacious reporter kept filing requests until the records were finally released."},
+    {word:"ubiquitous", ipa:"yoo-BIK-wih-tus", pos:"adjective", level:"medium", definition:"Seeming to be present everywhere at once; very common.", example:"Smartphones have become so ubiquitous that it's hard to remember life without them."},
+    {word:"zealous", ipa:"ZEL-us", pos:"adjective", level:"medium", definition:"Showing great energy and enthusiasm in pursuit of a cause or goal.", example:"The zealous volunteers knocked on every door in the neighborhood before sundown."},
+    {word:"ephemeral", ipa:"eh-FEM-er-ul", pos:"adjective", level:"hard", definition:"Lasting for only a very short time.", example:"Cherry blossoms are prized partly because their beauty is so ephemeral."},
+    {word:"cacophony", ipa:"kuh-KOF-uh-nee", pos:"noun", level:"hard", definition:"A harsh, jarring mixture of loud sounds.", example:"Backstage was a cacophony of tuning instruments and last-minute cues."},
+    {word:"obfuscate", ipa:"OB-fus-kayt", pos:"verb", level:"hard", definition:"To make something unclear or hard to understand on purpose.", example:"The report used dense jargon that seemed designed to obfuscate the actual spending."},
+    {word:"perfunctory", ipa:"per-FUNK-tuh-ree", pos:"adjective", level:"hard", definition:"Done as a routine duty, without real interest, care, or effort.", example:"He gave a perfunctory nod before returning to his phone."},
+    {word:"quixotic", ipa:"kwik-SOT-ik", pos:"adjective", level:"hard", definition:"Extremely idealistic in an unrealistic or impractical way.", example:"Their quixotic plan to launch the app in a week with no funding never stood a chance."},
+    {word:"sycophant", ipa:"SIK-oh-fant", pos:"noun", level:"hard", definition:"A person who flatters someone powerful to gain favor.", example:"Surrounded by sycophants, the CEO rarely heard an honest objection."},
+    {word:"ineffable", ipa:"in-EF-uh-bul", pos:"adjective", level:"hard", definition:"Too great or extreme to be expressed or described in words.", example:"There was an ineffable sadness to the empty classroom on the last day of school."},
+    {word:"mellifluous", ipa:"meh-LIF-loo-us", pos:"adjective", level:"hard", definition:"Sweet or musical in sound; pleasant to hear.", example:"The radio host's mellifluous voice made even the traffic report soothing."}
+  ];
+
+  var state = {
+    level: "all",
+    queue: [],
+    qIndex: 0,
+    current: null,
+    correct: 0,
+    total: 0,
+    streak: 0,
+    best: 0,
+    sample: null,
+    sampleChecked: false,
+    usedExtraWords: []
+  };
+
+  try {
+    var savedBest = localStorage.getItem("lvc_best");
+    if (savedBest) state.best = parseInt(savedBest, 10) || 0;
+  } catch (e) {}
+
+  // ---------- DOM ----------
+  var el = {
+    levels: document.getElementById("levels"),
+    scorechip: document.getElementById("scorechip"),
+    word: document.getElementById("word"),
+    pos: document.getElementById("pos"),
+    ipa: document.getElementById("ipa"),
+    levelTag: document.getElementById("levelTag"),
+    promptWord: document.getElementById("promptWord"),
+    hearWordBtn: document.getElementById("hearWordBtn"),
+    wave: document.getElementById("wave"),
+    quizStage: document.getElementById("quizStage"),
+    verdictStage: document.getElementById("verdictStage"),
+    answerBox: document.getElementById("answerBox"),
+    checkBtn: document.getElementById("checkBtn"),
+    revealBtn: document.getElementById("revealBtn"),
+    verdictBox: document.getElementById("verdictBox"),
+    definitionBox: document.getElementById("definitionBox"),
+    hearDefBtn: document.getElementById("hearDefBtn"),
+    nextBtn: document.getElementById("nextBtn"),
+    correctCount: document.getElementById("correctCount"),
+    totalCount: document.getElementById("totalCount"),
+    streakCount: document.getElementById("streakCount"),
+    bestCount: document.getElementById("bestCount"),
+    surpriseRow: document.getElementById("surpriseRow"),
+    surpriseBtn: document.getElementById("surpriseBtn")
+  };
+
+  var LEVELS = [
+    {id:"all", label:"All levels"},
+    {id:"easy", label:"Easy"},
+    {id:"medium", label:"Medium"},
+    {id:"hard", label:"Hard"}
+  ];
+  LEVELS.forEach(function(l){
+    var b = document.createElement("button");
+    b.className = "chip" + (l.id === state.level ? " active" : "");
+    b.textContent = l.label;
+    b.dataset.level = l.id;
+    b.addEventListener("click", function(){
+      state.level = l.id;
+      Array.prototype.forEach.call(el.levels.children, function(c){
+        c.classList.toggle("active", c.dataset.level === l.id);
+      });
+      buildQueue();
+      startRound(nextWord());
+    });
+    el.levels.appendChild(b);
+  });
+
+  // ---------- speech synthesis ----------
+  var voices = [];
+  function loadVoices(){ voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : []; }
+  if (window.speechSynthesis) {
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+  function pickVoice(){
+    if (!voices.length) return null;
+    var pref = voices.find(function(v){ return /en-US/i.test(v.lang) && /google/i.test(v.name); });
+    pref = pref || voices.find(function(v){ return /en-US/i.test(v.lang); });
+    pref = pref || voices.find(function(v){ return /^en/i.test(v.lang); });
+    return pref || voices[0];
+  }
+  function speak(text, opts){
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(text);
+    var v = pickVoice();
+    if (v) u.voice = v;
+    u.rate = (opts && opts.rate) || 0.96;
+    u.pitch = 1;
+    u.onstart = function(){ el.wave.classList.add("live"); };
+    u.onend = function(){ el.wave.classList.remove("live"); };
+    u.onerror = function(){ el.wave.classList.remove("live"); };
+    window.speechSynthesis.speak(u);
+  }
+
+  // ---------- queue management ----------
+  function shuffle(arr){
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function buildQueue(){
+    var pool = WORDS.concat(state.usedExtraWords);
+    if (state.level !== "all") pool = pool.filter(function(w){ return w.level === state.level; });
+    state.queue = shuffle(pool);
+    state.qIndex = 0;
+  }
+  function nextWord(){
+    if (state.qIndex >= state.queue.length) buildQueue();
+    var w = state.queue[state.qIndex];
+    state.qIndex++;
+    return w;
+  }
+
+  // ---------- rendering ----------
+  function renderWord(w){
+    el.word.textContent = w.word;
+    el.pos.textContent = w.pos;
+    el.ipa.textContent = "/" + w.ipa + "/";
+    el.levelTag.textContent = w.level;
+    el.promptWord.textContent = "“" + w.word + "”";
+    el.answerBox.value = "";
+    el.quizStage.hidden = false;
+    el.verdictStage.hidden = true;
+    el.checkBtn.disabled = false;
+    el.checkBtn.textContent = "Check my answer";
+  }
+
+  function startRound(w){
+    state.current = w;
+    renderWord(w);
+    speak(w.word, {rate: 0.9});
+  }
+
+  function updateScoreUI(){
+    el.scorechip.textContent = state.correct + " / " + state.total;
+    el.correctCount.textContent = state.correct;
+    el.totalCount.textContent = state.total;
+    el.streakCount.textContent = state.streak;
+    el.bestCount.textContent = state.best;
+  }
+
+  function showVerdict(kind, markText, feedback, source){
+    el.quizStage.hidden = true;
+    el.verdictStage.hidden = false;
+    el.verdictBox.className = "verdict " + kind;
+    el.verdictBox.innerHTML =
+      '<span class="mark">' + markText + '</span>' +
+      '<span class="feedback">' + feedback +
+      (source ? '<span class="source">' + source + '</span>' : '') +
+      '</span>';
+    var w = state.current;
+    el.definitionBox.innerHTML =
+      '<div class="def"><b>' + w.word + '</b> — ' + w.definition + '</div>' +
+      '<div class="ex">“' + w.example + '”</div>';
+    speak(feedback);
+  }
+
+  // ---------- grading ----------
+  function tokenize(s){
+    return (s || "").toLowerCase().match(/[a-z']+/g) || [];
+  }
+  var STOP = {the:1,a:1,an:1,of:1,to:1,and:1,or:1,in:1,on:1,is:1,are:1,be:1,that:1,with:1,for:1,as:1,it:1,by:1,not:1,or:1,this:1,something:1,someone:1,who:1,very:1,without:1,being:1};
+  function gradeLocally(w, answer){
+    var ansWords = tokenize(answer).filter(function(t){ return !STOP[t] && t.length > 2; });
+    var defWords = tokenize(w.definition).filter(function(t){ return !STOP[t] && t.length > 2; });
+    var ansSet = {}; ansWords.forEach(function(t){ ansSet[t] = 1; });
+    var hits = defWords.filter(function(t){ return ansSet[t]; }).length;
+    var ratio = defWords.length ? hits / defWords.length : 0;
+    var long = ansWords.length >= 3;
+    var correct = (hits >= 2 || ratio >= 0.22) && long;
+    var feedback = correct
+      ? "Nice — that lines up with the real meaning of " + w.word + "."
+      : "Not quite. " + w.word + " actually means: " + w.definition;
+    return {correct: correct, feedback: feedback};
+  }
+
+  function gradeWithAI(w, answer){
+    if (!state.sample) return Promise.resolve(null);
+    var prompt = "You are a warm, encouraging vocabulary tutor for an adult learner.
+" +
+      "Word: "" + w.word + "" (" + w.pos + ")
+" +
+      "Correct definition: " + w.definition + "
+" +
+      "Example usage: " + w.example + "
+" +
+      "The learner was asked, out loud, what the word means, and answered in their own words:
+" +
+      """ + answer + ""
+
+" +
+      "Judge generously: accept paraphrases, synonyms, and partial understanding as correct, not just exact wording. " +
+      "Reply with ONLY a JSON object of the shape " +
+      "{"correct": true or false, "feedback": "one short, warm, SPOKEN sentence (max 24 words) addressed directly to the learner, explaining briefly why"}.";
+    return state.sample.json(prompt, {modelTier: "quick", cache: false}).then(function(data){
+      if (!data || typeof data.correct !== "boolean" || typeof data.feedback !== "string") return null;
+      return data;
+    }).catch(function(){ return null; });
+  }
+
+  function handleCheck(){
+    var w = state.current;
+    var answer = el.answerBox.value.trim();
+    if (!answer) { el.answerBox.focus(); return; }
+    el.checkBtn.disabled = true;
+    el.checkBtn.textContent = state.sample ? "Checking…" : "Checking…";
+
+    var finish = function(result, source){
+      state.total++;
+      if (result.correct) { state.correct++; state.streak++; state.best = Math.max(state.best, state.streak); }
+      else { state.streak = 0; }
+      try { localStorage.setItem("lvc_best", String(state.best)); } catch (e) {}
+      updateScoreUI();
+      showVerdict(result.correct ? "good" : "bad", result.correct ? "✓" : "✗", result.feedback, source);
+      el.checkBtn.disabled = false;
+    };
+
+    if (state.sample) {
+      gradeWithAI(w, answer).then(function(data){
+        if (data) finish(data, "Graded by Claude");
+        else finish(gradeLocally(w, answer), "Graded locally (AI unavailable right now)");
+      });
+    } else {
+      finish(gradeLocally(w, answer), "Graded locally");
+    }
+  }
+
+  function handleReveal(){
+    var w = state.current;
+    state.total++;
+    state.streak = 0;
+    updateScoreUI();
+    showVerdict("neutral", "👀", "Here's what " + w.word + " means — have another go with the next word.");
+  }
+
+  // ---------- AI bonus word ----------
+  function trySampleCapability(){
+    if (!window.claude || typeof window.claude.use !== "function") { state.sampleChecked = true; return; }
+    window.claude.use("sample").then(function(ns){
+      state.sample = ns || null;
+      state.sampleChecked = true;
+      el.surpriseRow.hidden = !state.sample;
+    }).catch(function(){ state.sampleChecked = true; });
+  }
+
+  function surpriseWord(){
+    if (!state.sample) return;
+    el.surpriseBtn.disabled = true;
+    el.surpriseBtn.textContent = "Thinking…";
+    var used = WORDS.concat(state.usedExtraWords).map(function(w){ return w.word; }).join(", ");
+    var prompt = "Pick one genuinely interesting, moderately advanced English vocabulary word for an adult " +
+      "vocabulary-building app. Do not use any of these words: " + used + ".
+" +
+      "Reply with ONLY a JSON object: {"word": string, "ipa": "a simple readable phonetic respelling, like 'luh-KWAY-shus'", " +
+      ""pos": "noun, verb, adjective, or adverb", "definition": "one clear sentence", " +
+      ""example": "one natural example sentence that uses the word", "level": "easy, medium, or hard"}.";
+    state.sample.json(prompt, {modelTier: "default", cache: false}).then(function(w){
+      if (!w || !w.word || !w.definition) throw new Error("bad shape");
+      w.pos = w.pos || "word"; w.level = w.level || "hard"; w.ipa = w.ipa || "";
+      state.usedExtraWords.push(w);
+      state.queue.splice(state.qIndex, 0, w);
+      startRound(nextWord());
+    }).catch(function(){
+      showToastlessNote("Couldn't reach Claude for a new word just now — try again in a moment.");
+    }).finally(function(){
+      el.surpriseBtn.disabled = false;
+      el.surpriseBtn.textContent = "Surprise me ✨";
+    });
+  }
+
+  function showToastlessNote(msg){
+    var prevVerdict = el.verdictStage.hidden;
+    el.verdictStage.hidden = false;
+    el.quizStage.hidden = true;
+    el.verdictBox.className = "verdict neutral";
+    el.verdictBox.innerHTML = '<span class="mark">ⓘ</span><span class="feedback">' + msg + '</span>';
+    el.definitionBox.innerHTML = "";
+    if (prevVerdict === false) { /* already showing a verdict; leave as is */ }
+  }
+
+  // ---------- wire up ----------
+  el.hearWordBtn.addEventListener("click", function(){
+    if (state.current) speak(state.current.word, {rate: 0.85});
+  });
+  el.checkBtn.addEventListener("click", handleCheck);
+  el.revealBtn.addEventListener("click", handleReveal);
+  el.hearDefBtn.addEventListener("click", function(){
+    var w = state.current;
+    if (w) speak(w.word + ". " + w.definition + " For example: " + w.example);
+  });
+  el.nextBtn.addEventListener("click", function(){ startRound(nextWord()); });
+  el.surpriseBtn.addEventListener("click", surpriseWord);
+  el.answerBox.addEventListener("keydown", function(e){
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleCheck();
+  });
+
+  // ---------- boot ----------
+  buildQueue();
+  updateScoreUI();
+  startRound(nextWord());
+  trySampleCapability();
+})();
+</script>
