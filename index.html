@@ -457,22 +457,17 @@
 
   function gradeWithAI(w, answer){
     if (!state.sample) return Promise.resolve(null);
-    var prompt = "You are a warm, encouraging vocabulary tutor for an adult learner.
-" +
-      "Word: "" + w.word + "" (" + w.pos + ")
-" +
-      "Correct definition: " + w.definition + "
-" +
-      "Example usage: " + w.example + "
-" +
-      "The learner was asked, out loud, what the word means, and answered in their own words:
-" +
-      """ + answer + ""
-
-" +
+    var NL = String.fromCharCode(10);
+    var Q = String.fromCharCode(34);
+    var prompt = "You are a warm, encouraging vocabulary tutor for an adult learner." + NL +
+      "Word: " + Q + w.word + Q + " (" + w.pos + ")" + NL +
+      "Correct definition: " + w.definition + NL +
+      "Example usage: " + w.example + NL +
+      "The learner was asked, out loud, what the word means, and answered in their own words:" + NL +
+      Q + answer + Q + NL + NL +
       "Judge generously: accept paraphrases, synonyms, and partial understanding as correct, not just exact wording. " +
       "Reply with ONLY a JSON object of the shape " +
-      "{"correct": true or false, "feedback": "one short, warm, SPOKEN sentence (max 24 words) addressed directly to the learner, explaining briefly why"}.";
+      "{" + Q + "correct" + Q + ": true or false, " + Q + "feedback" + Q + ": " + Q + "one short, warm, SPOKEN sentence (max 24 words) addressed directly to the learner, explaining briefly why" + Q + "}.";
     return state.sample.json(prompt, {modelTier: "quick", cache: false}).then(function(data){
       if (!data || typeof data.correct !== "boolean" || typeof data.feedback !== "string") return null;
       return data;
@@ -528,13 +523,14 @@
     if (!state.sample) return;
     el.surpriseBtn.disabled = true;
     el.surpriseBtn.textContent = "Thinking…";
+    var NL = String.fromCharCode(10);
+    var Q = String.fromCharCode(34);
     var used = WORDS.concat(state.usedExtraWords).map(function(w){ return w.word; }).join(", ");
     var prompt = "Pick one genuinely interesting, moderately advanced English vocabulary word for an adult " +
-      "vocabulary-building app. Do not use any of these words: " + used + ".
-" +
-      "Reply with ONLY a JSON object: {"word": string, "ipa": "a simple readable phonetic respelling, like 'luh-KWAY-shus'", " +
-      ""pos": "noun, verb, adjective, or adverb", "definition": "one clear sentence", " +
-      ""example": "one natural example sentence that uses the word", "level": "easy, medium, or hard"}.";
+      "vocabulary-building app. Do not use any of these words: " + used + "." + NL +
+      "Reply with ONLY a JSON object: {" + Q + "word" + Q + ": string, " + Q + "ipa" + Q + ": " + Q + "a simple readable phonetic respelling, like 'luh-KWAY-shus'" + Q + ", " +
+      Q + "pos" + Q + ": " + Q + "noun, verb, adjective, or adverb" + Q + ", " + Q + "definition" + Q + ": " + Q + "one clear sentence" + Q + ", " +
+      Q + "example" + Q + ": " + Q + "one natural example sentence that uses the word" + Q + ", " + Q + "level" + Q + ": " + Q + "easy, medium, or hard" + Q + "}.";
     state.sample.json(prompt, {modelTier: "default", cache: false}).then(function(w){
       if (!w || !w.word || !w.definition) throw new Error("bad shape");
       w.pos = w.pos || "word"; w.level = w.level || "hard"; w.ipa = w.ipa || "";
@@ -550,13 +546,11 @@
   }
 
   function showToastlessNote(msg){
-    var prevVerdict = el.verdictStage.hidden;
     el.verdictStage.hidden = false;
     el.quizStage.hidden = true;
     el.verdictBox.className = "verdict neutral";
     el.verdictBox.innerHTML = '<span class="mark">ⓘ</span><span class="feedback">' + msg + '</span>';
     el.definitionBox.innerHTML = "";
-    if (prevVerdict === false) { /* already showing a verdict; leave as is */ }
   }
 
   // ---------- wire up ----------
